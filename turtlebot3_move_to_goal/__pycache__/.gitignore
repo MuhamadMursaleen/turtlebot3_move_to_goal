@@ -1,0 +1,3 @@
+#Ignore following 
+*.cpython-310.pyc
+*.pyc
