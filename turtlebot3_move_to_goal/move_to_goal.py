@@ -28,48 +28,129 @@ class GoForward(Node):
     self.__yaw=0.0
     self.target_distance = 0
     self.target_angle = 0
+    self.max_speed = 0.4
+    self.kp = 0.02
+    self.kd = 0.02
+    self.last_linear_velocity = 0
+    self.target_accuracy = 0.1
     
 
       
 
   def main(self, msg):
-    while True:
-      self.odom_callback(msg)
+    
+    self.odom_callback(msg)
 
-      if self.Current_goal_number <= len(self.goal_list):
-        # to update target dis and angle
-        self.cal_tar_dis_angle( msg)
-        print(" in goal")
-        print(self.goal_list)
-        self.Current_goal_number+=1
+    if self.Current_goal_number <= len(self.goal_list):
+      # to update target dis and angle
+      print(self.cal_tar_dis_angle( msg))
+      print(" in main")
+      print("current x = ",self.__x," : y = ", self.__y, "target x = ",
+            self.goal_list[self.Current_goal_number-1]['x'],
+            " : y = ", self.goal_list[self.Current_goal_number-1]['y'])
+      print('target distance = ',self.target_distance, ':  target angle = %',   
+            self.target_angle)
+      # print(self.goal_list)
+      if (self.target_distance<self.target_accuracy):
+        if (-3< (self.__yaw - (self.goal_list[self.Current_goal_number-1]['yaw']))<3):
+          self.stop_turtlebot()
+          self.Current_goal_number+=1
+        else:
+          self.set_angle(self.goal_list[self.Current_goal_number-1]['yaw'])   
       else:
-        condition = 'y'
-        while condition == 'y' or condition =='Y':
-          while True:
-            x = input("Enter the X of the next Goal: ")
-            try:
-                x = float(x)  # Try to convert the input to a float
-                break  # Break out of the loop if successful
-            except ValueError:
-                print("Invalid input. Please enter a valid number.")
-          while True:
-            y = input("Enter the Y of the next Goal: ")
-            try:
-                y = float(y)  # Try to convert the input to a float
-                break  # Break out of the loop if successful
-            except ValueError:
-                print("Invalid input. Please enter a valid number.")
-          while True:
-            yaw = input("Enter the Yaw of the next Goal: ")
-            try:
-              yaw = float(yaw)  # Try to convert the input to a float
+        self.CALCULATE_PID(self.target_angle)  
+    else:
+      condition = 'y'
+      while condition == 'y' or condition =='Y':
+        while True:
+          x = input("Enter the X of the next Goal: ")
+          try:
+              x = float(x)  # Try to convert the input to a float
               break  # Break out of the loop if successful
-            except ValueError:
+          except ValueError:
               print("Invalid input. Please enter a valid number.")
-          new_goal = {"x":x, "y": y, "yaw": yaw}
-          self.goal_list.append(new_goal)
-          print("Do you want to add Next goal if yes then press y/Y or not then any key ")
-          condition = input()
+        while True:
+          y = input("Enter the Y of the next Goal: ")
+          try:
+              y = float(y)  # Try to convert the input to a float
+              break  # Break out of the loop if successful
+          except ValueError:
+              print("Invalid input. Please enter a valid number.")
+        while True:
+          yaw = input("Enter the Yaw of the next Goal: ")
+          try:
+            yaw = float(yaw)  # Try to convert the input to a float
+            break  # Break out of the loop if successful
+          except ValueError:
+            print("Invalid input. Please enter a valid number.")
+        new_goal = {"x":x, "y": y, "yaw": yaw}
+        self.goal_list.append(new_goal)
+        print("Do you want to add Next goal if yes then press y/Y or not then any key ")
+        condition = input()
+
+  def CALCULATE_PID(self, yaw_target):
+
+    forward_speed = self.max_speed
+    last_linear_velocity = self.last_linear_velocity
+    yaw = self.__yaw
+    
+    yaw_error = (yaw_target - yaw)
+    if yaw_error < -180 :
+            yaw_error = -360 - yaw_error
+    if yaw_error >180 :
+            yaw_error = -360 + yaw_error
+    
+    angular_error =  yaw_error
+    last_error = angular_error
+    rate_error = angular_error- last_error
+
+    total_error = self.kp*angular_error + rate_error * self.kd 
+
+    angular_velocity =  total_error
+    linear_velocity = forward_speed
+    
+    if angular_velocity > (2*forward_speed) :
+            angular_velocity = (2*forward_speed)
+    if angular_velocity < (-(2*forward_speed)) :
+            angular_velocity = -(2*forward_speed)
+
+    if angular_velocity > 0:
+            linear_velocity = forward_speed - angular_velocity/2
+    elif angular_velocity < 0:
+            linear_velocity = forward_speed + angular_velocity/2
+    
+
+    if linear_velocity >last_linear_velocity:
+            linear_velocity = last_linear_velocity+ forward_speed/10
+    elif linear_velocity < last_linear_velocity:
+            linear_velocity = last_linear_velocity- forward_speed/10
+    else:
+            print("dont chnage linear_velocity")
+
+    self.last_linear_velocity = linear_velocity
+    
+    self.move_turtlebot(linear_velocity, angular_velocity)
+    # rospy.loginfo('yaw = %f  yaw_error = %f total_error : %f : angular_velocity= %f  linear_velocity= %f', yaw,  yaw_error, total_error, angular_velocity, linear_velocity) 
+    print("yaw =  yaw_error =  total_error :  : angular_velocity= %")
+    print("linear_velocity= ", yaw,  yaw_error, total_error, angular_velocity, linear_velocity) 
+
+
+  def set_angle(self, yaw_target):
+    yaw = self.__yaw
+    yaw_error = (yaw_target - yaw)
+    if yaw_error < -180 :
+            yaw_error = -360 - yaw_error
+    if yaw_error >180 :
+            yaw_error = -360 + yaw_error
+    error = self.kp* yaw_error
+    angular_velocity= error        
+    if angular_velocity > self.max_speed :
+            angular_velocity = self.max_speed
+    if angular_velocity < (-self.max_speed) :
+            angular_velocity = -self.max_speed
+    linear_velocity = 0
+    self.move_turtlebot (linear_velocity, angular_velocity)
+    print('setting to angle: yaw = %f  yaw_error = %f', yaw,  yaw_error)
 
 
   def cal_tar_dis_angle(self, msg):
@@ -84,7 +165,7 @@ class GoForward(Node):
       y2 = y_target
       dis_angle = self.cal_dis_angle(x1, y1, x2, y2)  
       self.target_distance = dis_angle["distance"]
-      self.angle = dis_angle["angle"]
+      self.target_angle = dis_angle["angle"]
       return dis_angle
     else:
       return {"distance": 0.0 , "angle":0.0 }
@@ -104,9 +185,10 @@ class GoForward(Node):
     return {"distance":distance , "angle":angle }
 
   def odom_callback(self, msg):
-    print("updating pose info")
+    # print("updating pose info")
     self.__x = msg.pose.pose.position.x
-    self.__y = msg.pose.pose.position.x
+    self.__y = msg.pose.pose.position.y
+    # print(self.__x,"   ",self.__y)
     q0 = msg.pose.pose.orientation.w
     q1 = msg.pose.pose.orientation.x
     q2 = msg.pose.pose.orientation.y
