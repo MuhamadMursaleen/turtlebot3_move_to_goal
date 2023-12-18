@@ -5,9 +5,8 @@ from nav_msgs.msg import Odometry
 import time
 import math
 
-
-# "GoForward" class inherits from the base class "Node"
-class GoForward(Node):
+# "MoveToGoal" class inherits from the base class "Node"
+class MoveToGoal(Node):
 
   def __init__(self):
     # Initialize the node
@@ -32,9 +31,8 @@ class GoForward(Node):
     self.kp = 0.02
     self.kd = 0.02
     self.last_linear_velocity = 0
-    self.target_accuracy = 0.1
-    
-
+    self.distance_accuracy = 0.1
+    self.angle_accuracy = 3
       
 
   def main(self, msg):
@@ -43,25 +41,42 @@ class GoForward(Node):
 
     if self.Current_goal_number <= len(self.goal_list):
       # to update target dis and angle
-      print(self.cal_tar_dis_angle( msg))
-      print(" in main")
-      print("current x = ",self.__x," : y = ", self.__y, "target x = ",
-            self.goal_list[self.Current_goal_number-1]['x'],
-            " : y = ", self.goal_list[self.Current_goal_number-1]['y'])
-      print('target distance = ',self.target_distance, ':  target angle = %',   
-            self.target_angle)
+      self.cal_tar_dis_angle( msg)
+      print(" ")
+      pose = ("current x =  "+str(self.__x)+"  : y =  "+str(self.__y)
+              +" : yaw = "+str(self.__yaw)+":: target x =  "
+              +str(self.goal_list[self.Current_goal_number-1]['x']) 
+              +": y = "+str(self.goal_list[self.Current_goal_number-1]['y']))
+ 
+      remaing_distance = ("remaing target distance = "+ str(self.target_distance))
+
+      self.get_logger().info(pose)
+      self.get_logger().info(remaing_distance)
+
       # print(self.goal_list)
-      if (self.target_distance<self.target_accuracy):
-        if (-3< (self.__yaw - (self.goal_list[self.Current_goal_number-1]['yaw']))<3):
+      if (self.target_distance<self.distance_accuracy):
+
+        if (-self.angle_accuracy< (self.__yaw - (self.goal_list
+              [self.Current_goal_number-1]['yaw']))<self.angle_accuracy):
+          self.get_logger().info("Reached to the goal")
           self.stop_turtlebot()
+          time.sleep(1)
+          
           self.Current_goal_number+=1
         else:
+          
           self.set_angle(self.goal_list[self.Current_goal_number-1]['yaw'])   
+
       else:
-        self.CALCULATE_PID(self.target_angle)  
+        self.CALCULATE_PID(self.target_angle) 
+        self.get_logger().info("going to goal") 
+
     else:
+      self.get_logger().info("Waiting for Next Target from user")
       condition = 'y'
       while condition == 'y' or condition =='Y':
+
+        # Get X of Target
         while True:
           x = input("Enter the X of the next Goal: ")
           try:
@@ -69,6 +84,8 @@ class GoForward(Node):
               break  # Break out of the loop if successful
           except ValueError:
               print("Invalid input. Please enter a valid number.")
+
+        # Get Y of Target
         while True:
           y = input("Enter the Y of the next Goal: ")
           try:
@@ -76,17 +93,27 @@ class GoForward(Node):
               break  # Break out of the loop if successful
           except ValueError:
               print("Invalid input. Please enter a valid number.")
+        
+        # Get Yaw of Target
         while True:
           yaw = input("Enter the Yaw of the next Goal: ")
           try:
             yaw = float(yaw)  # Try to convert the input to a float
+            if yaw < -180 :
+              yaw = -360 - yaw
+            if yaw >180 :
+              yaw = -360 + yaw
             break  # Break out of the loop if successful
           except ValueError:
             print("Invalid input. Please enter a valid number.")
+
+
+        
         new_goal = {"x":x, "y": y, "yaw": yaw}
         self.goal_list.append(new_goal)
         print("Do you want to add Next goal if yes then press y/Y or not then any key ")
         condition = input()
+        self.get_logger().info("new goal has been recieved")
 
   def CALCULATE_PID(self, yaw_target):
 
@@ -96,13 +123,16 @@ class GoForward(Node):
     
     yaw_error = (yaw_target - yaw)
     if yaw_error < -180 :
-            yaw_error = -360 - yaw_error
+      yaw_error = -360 - yaw_error
     if yaw_error >180 :
-            yaw_error = -360 + yaw_error
+      yaw_error = -360 + yaw_error
     
     angular_error =  yaw_error
     last_error = angular_error
     rate_error = angular_error- last_error
+
+    yaw_error_logger = "Yaw error = "+str(yaw_error)
+    self._logger.error(yaw_error_logger)
 
     total_error = self.kp*angular_error + rate_error * self.kd 
 
@@ -110,30 +140,24 @@ class GoForward(Node):
     linear_velocity = forward_speed
     
     if angular_velocity > (2*forward_speed) :
-            angular_velocity = (2*forward_speed)
+      angular_velocity = (2*forward_speed)
     if angular_velocity < (-(2*forward_speed)) :
-            angular_velocity = -(2*forward_speed)
+      angular_velocity = -(2*forward_speed)
 
     if angular_velocity > 0:
-            linear_velocity = forward_speed - angular_velocity/2
+      linear_velocity = forward_speed - angular_velocity/2
     elif angular_velocity < 0:
-            linear_velocity = forward_speed + angular_velocity/2
+      linear_velocity = forward_speed + angular_velocity/2
     
 
     if linear_velocity >last_linear_velocity:
-            linear_velocity = last_linear_velocity+ forward_speed/10
+      linear_velocity = last_linear_velocity+ forward_speed/10
     elif linear_velocity < last_linear_velocity:
-            linear_velocity = last_linear_velocity- forward_speed/10
-    else:
-            print("dont chnage linear_velocity")
+      linear_velocity = last_linear_velocity- forward_speed/10
 
     self.last_linear_velocity = linear_velocity
     
     self.move_turtlebot(linear_velocity, angular_velocity)
-    # rospy.loginfo('yaw = %f  yaw_error = %f total_error : %f : angular_velocity= %f  linear_velocity= %f', yaw,  yaw_error, total_error, angular_velocity, linear_velocity) 
-    print("yaw =  yaw_error =  total_error :  : angular_velocity= %")
-    print("linear_velocity= ", yaw,  yaw_error, total_error, angular_velocity, linear_velocity) 
-
 
   def set_angle(self, yaw_target):
     yaw = self.__yaw
@@ -150,8 +174,6 @@ class GoForward(Node):
             angular_velocity = -self.max_speed
     linear_velocity = 0
     self.move_turtlebot (linear_velocity, angular_velocity)
-    print('setting to angle: yaw = %f  yaw_error = %f', yaw,  yaw_error)
-
 
   def cal_tar_dis_angle(self, msg):
     if self.Current_goal_number <= len(self.goal_list):
@@ -180,20 +202,22 @@ class GoForward(Node):
     if x2 < x1 :
             angle = angle+180
     distance  = math.sqrt( (x*x) + (y*y) )
-    # self.target_distance = distance
-    # self.angle = angle
+    if angle < -180 :
+      angle = -360 - angle
+    if angle >180 :
+      angle = -360 + angle
     return {"distance":distance , "angle":angle }
 
   def odom_callback(self, msg):
     # print("updating pose info")
-    self.__x = msg.pose.pose.position.x
-    self.__y = msg.pose.pose.position.y
-    # print(self.__x,"   ",self.__y)
+    self.__x = round(msg.pose.pose.position.x,2)
+    self.__y = round(msg.pose.pose.position.y,2)
     q0 = msg.pose.pose.orientation.w
     q1 = msg.pose.pose.orientation.x
     q2 = msg.pose.pose.orientation.y
     q3 = msg.pose.pose.orientation.z
-    self.__yaw = math.degrees(math.atan2(2.0*(q0*q3 + q1*q2),(1.0-2.0*(q2*q2 + q3*q3))))
+    self.__yaw = round(math.degrees(math.atan2(2.0*(q0*q3 + q1*q2),
+                                               (1.0-2.0*(q2*q2 + q3*q3)))),2)
 
   def get_x(self):
     return self.__x
@@ -213,7 +237,7 @@ class GoForward(Node):
     #publish  the velcity command
     self.cmd_publisher_.publish(move_cmd)
     #log details of the current phase of execution
-    self.get_logger().info('Publishing cmd_vel')
+    # self.get_logger().info('Publishing cmd_vel')
       
   def stop_turtlebot(self):
     # define what happens when program is interrupted
@@ -224,32 +248,47 @@ class GoForward(Node):
     self.cmd_publisher_.publish(Twist())
 
     
-        
-    
 def main(args=None):
   rclpy.init(args=args)
   
   # we are using try-except tools to  catch keyboard interrupt
   try:
     # create an object for GoForward class
-    turtlebot = GoForward()
-    # continue untill interrupted
-    # rclpy.spin(cmd_publisher)
-    # linear = 0.2
-    # angular =0.0
-    # turtlebot.move_turtlebot( linear,angular)
-    # time.sleep(1)
-    # turtlebot.stop_turtlebot( )
-    # time.sleep(1)
-    # turtlebot.move_turtlebot( linear,angular)
-    # time.sleep(1)
-    # turtlebot.stop_turtlebot( )
-    time.sleep(1)
-    rclpy.spin(turtlebot)
-    # while(True):
-    #     print(" ")
-
-    
+    turtlebot = MoveToGoal()
+    turtlebot._logger.info("Waiting for user input")
+    print("To move robot in Circle type c/C")
+    print("To move robot in rectangle type r/R")
+    print("To move robot in Complex type x/X")
+    print("To move robot to targets defined by user type p/P")
+    choice = input()
+    if choice == 'c' or choice == 'C':
+       turtlebot._logger.info("Moving robot in circle")
+       linear_velocity = 0.5
+       angular_velocity = 1
+       turtlebot.move_turtlebot(linear_velocity, angular_velocity)
+       time.sleep(6)
+       turtlebot.stop_turtlebot()
+    elif choice == 'r' or choice == 'R':
+      turtlebot._logger.info("Moving robot in Rectangle")
+      Goal =[{"x":0.0, "y":0.0, "yaw": 0.0},
+              {"x":1.0, "y":0.0, "yaw": 90.0},
+              {"x":1.0, "y":1.0, "yaw": 180.0},
+              {"x":0.0, "y":1.0, "yaw": -90.0},
+              {"x":0.0, "y":0.0, "yaw": 0.0},]
+      turtlebot.goal_list= Goal
+      rclpy.spin(turtlebot)
+    elif choice == 'x' or choice == 'X':
+      turtlebot._logger.info("Moving robot in Random")
+      Goal =[{"x":0.0, "y":0.0, "yaw": 0.0},
+              {"x":1.0, "y":0.0, "yaw": 0.0},
+              {"x":-1.0, "y":1.0, "yaw": 0.0},
+              {"x":0.0, "y":2.0, "yaw": 0.0},
+              {"x":0.0, "y":0.0, "yaw": 0.0},]
+      turtlebot.goal_list= Goal
+      rclpy.spin(turtlebot)
+    elif choice == 'p' or choice == 'P':
+      turtlebot._logger.info("Moving robot with user defined target")
+      rclpy.spin(turtlebot)
 
       
   except KeyboardInterrupt:
